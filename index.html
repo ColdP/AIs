@@ -125,14 +125,23 @@
             const models = {
                 gemini: {
                     name: "Google Gemini",
-                    apiKey: "AIzaSyAfCZm1g0zibKZF_6Xc5_mGdgTH8p-4YAA", // 更新了您的 Gemini API Key
+                    apiKey: "AIzaSyAfCZm1g0zibKZF_6Xc5_mGdgTH8p-4YAA",
                     type: "gemini"
                 },
                 qwen: {
                     name: "通义千问 - Qwen 3",
                     apiKey: "sk-e8c37eefd78f40eebc07624fd14faccc",
                     endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                    modelId: "qwen-plus",
                     type: "openai_compatible"
+                },
+                kimi: {
+                    name: "Kimi (Moonshot AI)",
+                    apiKey: "sk-FJ1zl2M52ZrIYmjgLx0VwDrHxqVinqzLCAL33jxtbJAhudYa",
+                    endpoint: "https://api.moonshot.cn/v1/chat/completions",
+                    modelId: "moonshot-v1-8k",
+                    type: "openai_compatible",
+                    systemPrompt: "你是 Kimi，由 Moonshot AI 提供的人工智能助手，你更擅长中文和英文的对话。你会为用户提供安全，有帮助，准确的回答。同时，你会拒绝一切涉及恐怖主义，种族歧视，黄色暴力等问题的回答。Moonshot AI 为专有名词，不可翻译成其他语言。"
                 },
                 doubao: {
                     name: "豆包 - Doubao-Seed",
@@ -317,21 +326,28 @@
                 let body;
                 let endpoint = modelConfig.endpoint;
 
-                const messages = history.map(h => ({
+                let messages = history.map(h => ({
                     role: h.role === 'ai' ? 'assistant' : 'user',
                     content: h.content
                 }));
+
+                // 为特定模型添加系统提示
+                if (modelConfig.systemPrompt && !messages.some(m => m.role === 'system')) {
+                    messages.unshift({ role: 'system', content: modelConfig.systemPrompt });
+                }
+
                 messages.push({ role: 'user', content: prompt });
 
                 switch (modelConfig.type) {
                     case 'gemini':
                         return callGeminiApi(prompt, modelConfig.apiKey);
 
-                    case 'openai_compatible': // 通义千问
+                    case 'openai_compatible': // 通义千问, Kimi
                         headers['Authorization'] = `Bearer ${modelConfig.apiKey}`;
                         body = JSON.stringify({
-                            model: "qwen-plus", // 根据文档，使用兼容模式时可以指定具体模型
-                            messages: messages
+                            model: modelConfig.modelId,
+                            messages: messages,
+                            temperature: 0.3
                         });
                         break;
                     
