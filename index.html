@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 聚合应用</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* 自定义 Fluent UI 风格的样式 */
+        body {
+            font-family: 'Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f3f2f1; /* Fluent UI 背景色 */
+        }
+        .fluent-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .fluent-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .fluent-scrollbar::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        .fluent-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        .btn-fluent {
+            @apply px-4 py-2 rounded-md transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2;
+        }
+        .btn-primary {
+            @apply bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500;
+        }
+        .btn-secondary {
+            @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-400;
+        }
+        .model-item.active {
+            background-color: #e1dfdd;
+            border-left: 3px solid #0078d4;
+            font-weight: 600;
+        }
+        .history-panel {
+            transition: transform 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="overflow-hidden">
+
+    <div id="app" class="flex h-screen bg-white text-gray-800">
+
+        <!-- 左侧模型列表 -->
+        <aside class="w-64 bg-gray-100 border-r border-gray-200 flex flex-col">
+            <div class="p-4 border-b border-gray-200">
+                <h1 class="text-xl font-bold text-gray-900">AI 模型</h1>
+            </div>
+            <nav id="model-list" class="flex-1 p-2 space-y-1">
+                <!-- 模型列表将由 JS 动态生成 -->
+            </nav>
+        </aside>
+
+        <!-- 右侧主聊天界面 -->
+        <main class="flex-1 flex flex-col relative overflow-hidden">
+            <!-- 聊天头部 -->
+            <header class="flex items-center justify-between p-4 border-b border-gray-200 bg-white z-10">
+                <h2 id="current-model-name" class="text-lg font-semibold">选择一个模型开始</h2>
+                <button id="history-btn" class="btn-fluent btn-secondary flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span>历史记录</span>
+                </button>
+            </header>
+
+            <!-- 聊天消息区域 -->
+            <div id="chat-messages" class="flex-1 p-6 overflow-y-auto fluent-scrollbar">
+                <div class="flex justify-center items-center h-full">
+                    <div class="text-center text-gray-500">
+                        <i class="fa-solid fa-comments text-4xl mb-2"></i>
+                        <p>欢迎使用 AI 聚合应用</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 聊天输入区域 -->
+            <div class="p-4 border-t border-gray-200 bg-white">
+                <form id="chat-form" class="flex items-center gap-3">
+                    <input type="text" id="chat-input" placeholder="输入消息..." class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" autocomplete="off">
+                    <button type="submit" id="send-btn" class="btn-fluent btn-primary flex items-center justify-center w-12 h-12 rounded-lg">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+
+            <!-- 历史记录面板 -->
+            <div id="history-panel" class="history-panel absolute top-0 right-0 h-full w-96 bg-gray-50 border-l border-gray-200 shadow-lg transform translate-x-full z-20 flex flex-col">
+                 <div class="flex items-center justify-between p-4 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold">对话历史</h3>
+                    <button id="close-history-btn" class="text-gray-500 hover:text-gray-800">
+                        <i class="fa-solid fa-xmark fa-lg"></i>
+                    </button>
+                </div>
+                <div id="history-content" class="flex-1 p-4 overflow-y-auto fluent-scrollbar">
+                    <p class="text-gray-500">暂无历史记录。</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM 元素获取 ---
+            const modelListEl = document.getElementById('model-list');
+            const currentModelNameEl = document.getElementById('current-model-name');
+            const chatMessagesEl = document.getElementById('chat-messages');
+            const chatForm = document.getElementById('chat-form');
+            const chatInput = document.getElementById('chat-input');
+            const sendBtn = document.getElementById('send-btn');
+            const historyBtn = document.getElementById('history-btn');
+            const historyPanel = document.getElementById('history-panel');
+            const closeHistoryBtn = document.getElementById('close-history-btn');
+            const historyContentEl = document.getElementById('history-content');
+
+            // --- 模型配置 ---
+            const models = {
+                gemini: {
+                    name: "Google Gemini",
+                    apiKey: "AIzaSyAfCZm1g0zibKZF_6Xc5_mGdgTH8p-4YAA", // 更新了您的 Gemini API Key
+                    type: "gemini"
+                },
+                qwen: {
+                    name: "通义千问 - Qwen 3",
+                    apiKey: "sk-e8c37eefd78f40eebc07624fd14faccc",
+                    endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                    type: "openai_compatible"
+                },
+                doubao: {
+                    name: "豆包 - Doubao-Seed",
+                    apiKey: "1e0718fd-4ba7-4677-81e5-4c2fcf384d74",
+                    endpoint: "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+                    modelId: "doubao-seed-1-6-250615",
+                    type: "doubao_compatible"
+                },
+                deepseek_r1: {
+                    name: "DeepSeek-R1",
+                    apiKey: "1e0718fd-4ba7-4677-81e5-4c2fcf384d74",
+                    endpoint: "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+                    modelId: "deepseek-r1-250528",
+                    type: "doubao_compatible"
+                },
+                deepseek_v3: {
+                    name: "DeepSeek-V3",
+                    apiKey: "1e0718fd-4ba7-4677-81e5-4c2fcf384d74",
+                    endpoint: "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+                    modelId: "deepseek-v3-250324",
+                    type: "doubao_compatible"
+                }
+            };
+
+            // --- 应用状态 ---
+            let activeModelKey = null;
+            let conversationHistory = {}; // 按模型 key 存储对话历史
+            let isLoading = false;
+
+            // --- 函数 ---
+
+            /**
+             * 渲染模型列表
+             */
+            function renderModelList() {
+                modelListEl.innerHTML = '';
+                Object.keys(models).forEach(key => {
+                    const model = models[key];
+                    const item = document.createElement('a');
+                    item.href = '#';
+                    item.className = `model-item block p-3 rounded-md text-gray-700 hover:bg-gray-200 transition-colors duration-150 ${key === activeModelKey ? 'active' : ''}`;
+                    item.dataset.modelKey = key;
+                    item.textContent = model.name;
+                    item.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        selectModel(key);
+                    });
+                    modelListEl.appendChild(item);
+                    if (!conversationHistory[key]) {
+                        conversationHistory[key] = [];
+                    }
+                });
+            }
+
+            /**
+             * 选择一个模型
+             * @param {string} key - 模型 key
+             */
+            function selectModel(key) {
+                activeModelKey = key;
+                const model = models[key];
+                currentModelNameEl.textContent = model.name;
+                renderModelList();
+                renderChatHistory();
+            }
+
+            /**
+             * 将消息添加到聊天窗口
+             * @param {string} text - 消息内容
+             * @param {'user' | 'ai' | 'loading' | 'error'} role - 角色
+             */
+            function addMessageToUI(text, role) {
+                // 如果是新消息，先移除初始提示
+                const welcomeMessage = chatMessagesEl.querySelector('.text-center');
+                if (welcomeMessage) {
+                    welcomeMessage.remove();
+                }
+                
+                // 移除旧的加载中或错误消息
+                const existingSpecialMsg = chatMessagesEl.querySelector('.loading-message, .error-message');
+                if (existingSpecialMsg) {
+                    existingSpecialMsg.remove();
+                }
+
+                const messageWrapper = document.createElement('div');
+                messageWrapper.className = `flex mb-4 ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+                
+                const messageBubble = document.createElement('div');
+                messageBubble.className = `max-w-prose p-3 rounded-lg shadow`;
+
+                if (role === 'user') {
+                    messageBubble.className += ' bg-blue-500 text-white';
+                } else if (role === 'ai') {
+                    messageBubble.className += ' bg-gray-200 text-gray-800';
+                } else if (role === 'loading') {
+                    messageWrapper.classList.add('loading-message');
+                    messageBubble.className += ' bg-gray-200 text-gray-500';
+                    text = '<i class="fa-solid fa-spinner fa-spin"></i> AI 正在思考...';
+                } else if (role === 'error') {
+                    messageWrapper.classList.add('error-message');
+                    messageBubble.className += ' bg-red-100 text-red-700';
+                    text = `<i class="fa-solid fa-circle-exclamation"></i> 错误: ${text}`;
+                }
+                
+                messageBubble.innerHTML = text;
+                messageWrapper.appendChild(messageBubble);
+                chatMessagesEl.appendChild(messageWrapper);
+                chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight; // 自动滚动到底部
+            }
+
+            /**
+             * 渲染当前模型的聊天记录
+             */
+            function renderChatHistory() {
+                chatMessagesEl.innerHTML = '';
+                if (!activeModelKey || conversationHistory[activeModelKey].length === 0) {
+                     chatMessagesEl.innerHTML = `
+                        <div class="flex justify-center items-center h-full">
+                            <div class="text-center text-gray-500">
+                                <i class="fa-solid fa-comments text-4xl mb-2"></i>
+                                <p>与 ${activeModelKey ? models[activeModelKey].name : 'AI'} 开始对话吧！</p>
+                            </div>
+                        </div>`;
+                    return;
+                }
+                conversationHistory[activeModelKey].forEach(msg => {
+                    addMessageToUI(msg.content, msg.role);
+                });
+            }
+
+            /**
+             * 处理表单提交
+             * @param {Event} e
+             */
+            async function handleSendMessage(e) {
+                e.preventDefault();
+                if (isLoading || !activeModelKey) {
+                    if (!activeModelKey) {
+                        alert('请先选择一个AI模型！');
+                    }
+                    return;
+                }
+
+                const prompt = chatInput.value.trim();
+                if (!prompt) return;
+
+                // 1. 更新 UI
+                addMessageToUI(prompt, 'user');
+                conversationHistory[activeModelKey].push({ role: 'user', content: prompt });
+                chatInput.value = '';
+                setLoading(true);
+                addMessageToUI('', 'loading');
+
+                try {
+                    // 2. 调用 API
+                    const model = models[activeModelKey];
+                    const currentChatHistory = conversationHistory[activeModelKey].slice(0, -1); // 不包括当前用户输入
+                    
+                    const responseText = await callApi(prompt, model, currentChatHistory);
+
+                    // 3. 更新 UI 和历史记录
+                    addMessageToUI(responseText, 'ai');
+                    conversationHistory[activeModelKey].push({ role: 'ai', content: responseText });
+
+                } catch (error) {
+                    console.error('API call failed:', error);
+                    addMessageToUI(error.message, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            }
+            
+            /**
+             * 根据模型类型调用不同的 API
+             * @param {string} prompt
+             * @param {object} modelConfig
+             * @param {array} history
+             * @returns {Promise<string>}
+             */
+            async function callApi(prompt, modelConfig, history) {
+                let headers = { 'Content-Type': 'application/json' };
+                let body;
+                let endpoint = modelConfig.endpoint;
+
+                const messages = history.map(h => ({
+                    role: h.role === 'ai' ? 'assistant' : 'user',
+                    content: h.content
+                }));
+                messages.push({ role: 'user', content: prompt });
+
+                switch (modelConfig.type) {
+                    case 'gemini':
+                        return callGeminiApi(prompt, modelConfig.apiKey);
+
+                    case 'openai_compatible': // 通义千问
+                        headers['Authorization'] = `Bearer ${modelConfig.apiKey}`;
+                        body = JSON.stringify({
+                            model: "qwen-plus", // 根据文档，使用兼容模式时可以指定具体模型
+                            messages: messages
+                        });
+                        break;
+                    
+                    case 'doubao_compatible': // 豆包, DeepSeek
+                        headers['Authorization'] = `Bearer ${modelConfig.apiKey}`;
+                        body = JSON.stringify({
+                            model: modelConfig.modelId,
+                            messages: messages
+                        });
+                        break;
+
+                    default:
+                        throw new Error("不支持的模型类型");
+                }
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: headers,
+                    body: body
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error?.message || `API 请求失败，状态码: ${response.status}`);
+                }
+
+                const data = await response.json();
+                return data.choices[0].message.content;
+            }
+
+            /**
+             * 调用 Gemini API
+             * @param {string} prompt
+             * @param {string} apiKey - The API key for Gemini
+             * @returns {Promise<string>}
+             */
+            async function callGeminiApi(prompt, apiKey) {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: prompt }] }]
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error?.message || `Gemini API 请求失败，状态码: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    return result.candidates[0].content.parts[0].text;
+                } else {
+                    throw new Error("从 Gemini API 收到了无效的响应格式");
+                }
+            }
+
+
+            /**
+             * 设置加载状态
+             * @param {boolean} state
+             */
+            function setLoading(state) {
+                isLoading = state;
+                chatInput.disabled = state;
+                sendBtn.disabled = state;
+                if (state) {
+                    sendBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    sendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+
+            /**
+             * 切换历史记录面板的显示
+             */
+            function toggleHistoryPanel() {
+                if (historyPanel.classList.contains('translate-x-full')) {
+                    // 显示面板
+                    renderFullHistory();
+                    historyPanel.classList.remove('translate-x-full');
+                } else {
+                    // 隐藏面板
+                    historyPanel.classList.add('translate-x-full');
+                }
+            }
+            
+            /**
+             * 渲染所有模型的历史记录
+             */
+            function renderFullHistory() {
+                historyContentEl.innerHTML = '';
+                let hasHistory = false;
+
+                Object.keys(models).forEach(key => {
+                    if (conversationHistory[key] && conversationHistory[key].length > 0) {
+                        hasHistory = true;
+                        const modelHistoryContainer = document.createElement('div');
+                        modelHistoryContainer.className = 'mb-6';
+                        
+                        const modelTitle = document.createElement('h4');
+                        modelTitle.className = 'font-semibold text-md mb-2 border-b pb-1';
+                        modelTitle.textContent = models[key].name;
+                        modelHistoryContainer.appendChild(modelTitle);
+
+                        const conversationList = document.createElement('div');
+                        conversationList.className = 'space-y-2 text-sm';
+                        
+                        conversationHistory[key].forEach(msg => {
+                            const msgEl = document.createElement('p');
+                            const rolePrefix = msg.role === 'user' ? '👤 你: ' : '🤖 AI: ';
+                            msgEl.innerHTML = `<span class="font-medium">${rolePrefix}</span>${msg.content}`;
+                            msgEl.className = msg.role === 'user' ? 'text-blue-800' : 'text-gray-700';
+                            conversationList.appendChild(msgEl);
+                        });
+                        
+                        modelHistoryContainer.appendChild(conversationList);
+                        historyContentEl.appendChild(modelHistoryContainer);
+                    }
+                });
+
+                if (!hasHistory) {
+                    historyContentEl.innerHTML = '<p class="text-gray-500">所有模型均无历史记录。</p>';
+                }
+            }
+
+            // --- 事件监听 ---
+            chatForm.addEventListener('submit', handleSendMessage);
+            historyBtn.addEventListener('click', toggleHistoryPanel);
+            closeHistoryBtn.addEventListener('click', toggleHistoryPanel);
+
+            // --- 初始化 ---
+            renderModelList();
+            selectModel('gemini'); // 默认选择第一个模型
+        });
+    </script>
+</body>
+</html>
